@@ -1,7 +1,8 @@
+import { Audio } from 'expo-av';
+import * as Speech from 'expo-speech';
+// import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-
-const API_KEY = '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'
 
 const SECTORS = [
   { id: 'tech', label: 'Tech / Ingénierie', icon: '💻' },
@@ -20,14 +21,11 @@ const LEVELS = [
 const COMPANIES = ['Google', 'McKinsey', 'LVMH', 'BNP Paribas', 'Autre'];
 
 const callClaude = async (messages: any[], system: string) => {
-  console.log('Appel API en cours...');
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch('https://interview-coach2-sooty.vercel.app/api/chat', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': API_KEY,
       'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
     },
     body: JSON.stringify({
       model: 'claude-sonnet-4-6',
@@ -37,11 +35,52 @@ const callClaude = async (messages: any[], system: string) => {
     }),
   });
   const data = await res.json();
-  console.log('Réponse:', JSON.stringify(data));
   return data.content?.[0]?.text || '';
 };
+function cleanForSpeech(text: string) {
+  return text
+  .replace(/\*\*(.*?)\*\*/g, '$1')
+  .replace(/\*(.*?)\*/g, '$1')
+  .replace(/#{1,6}\s/g, '')
+  .replace(/`{1,3}(.*?)`{1,3}/g, '$1')
+  .replace(/[_~]/g, '')
+  .trim();
+}
+
+let currentSound: Audio.Sound | null = null;
+
+const speak = async (text: string) => {
+  try {
+    if (currentSound) {
+      await currentSound.unloadAsync();
+      currentSound = null;
+    }
+    const cleanText = cleanForSpeech(text);
+    const res = await fetch('https://interview-coach2-sooty.vercel.app/api/speech', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: cleanText }),
+    });
+    const data = await res.json();
+    if (!data.audio) return;
+    const uri = `data:audio/mp3;base64,${data.audio}`;
+    const { sound } = await Audio.Sound.createAsync({ uri }, { shouldPlay: true });
+    currentSound = sound;
+  } catch (e) {
+    console.log('Erreur speak:', e);
+  }
+};
+
 
 export default function HomeScreen() {
+  async function testerVoixFR() {
+    const voices = await Speech.getAvailableVoicesAsync();
+    const voixFR = voices.filter(v => v.language.startsWith('fr'));
+    console.log('=== VOIX FR DISPONIBLES ===');
+    voixFR.forEach((v, i) => {
+      console.log(`${i}: ${v.name}| qualité: ${v.quality} | id: ${v.identifier}`);
+    });
+  }
   const [screen, setScreen] = useState('home');
   const [sector, setSector] = useState<string|null>(null);
   const [level, setLevel] = useState<string|null>(null);
@@ -53,13 +92,39 @@ export default function HomeScreen() {
   const [scores, setScores] = useState<number[]>([]);
   const [questionCount, setQuestionCount] = useState(0);
   const [history, setHistory] = useState<any[]>([]);
+  const [isRecording, setIsRecording] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
   }, [messages, loading]);
+/*
+  useSpeechRecognitionEvent('result', (event) => {
+    if (event.results[0]) {
+      setInput(event.results[0].transcript);
+    }
+  });
 
-  const getSystem = () => `Tu es un recruteur senior chez ${company}, pour un poste ${LEVELS.find(l=>l.id===level)?.label} en ${SECTORS.find(s=>s.id===sector)?.label}. Poste: ${role}. Pose UNE question à la fois. Après chaque réponse, réponds UNIQUEMENT en JSON: {"score":0-100,"points_forts":["..."],"points_amelioration":["..."],"conseil":"...","prochaine_question":"..."}. Premier message: présente-toi et pose la première question (sans JSON). Réponds en français.N'utilise jamais de backticks ou blocs de code. Retourne le JSON brut sans formatage.`;
+  useSpeechRecognitionEvent('end', () => {
+    setIsRecording(false);
+  });
+  */
+
+  const getSystem = () => `Tu es un recruteur senior chez ${company}, pour un poste ${LEVELS.find(l=>l.id===level)?.label} en ${SECTORS.find(s=>s.id===sector)?.label}. Poste: ${role}. Pose UNE question à la fois. Après chaque réponse, réponds UNIQUEMENT en JSON: {"score":0-100,"points_forts":["..."],"points_amelioration":["..."],"conseil":"...","prochaine_question":"..."}. Premier message: présente-toi et pose la première question (sans JSON). Réponds en français. N'utilise jamais de backticks ou blocs de code. Retourne le JSON brut sans formatage.`;
+
+  const startRecording = async () => {
+    Speech.stop();
+    const { granted } = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+    if (!granted) return;
+    setIsRecording(true);
+    setInput('');
+    ExpoSpeechRecognitionModule.start({ lang: 'fr-FR', continuous: false });
+  };
+
+  const stopRecording = () => {
+    ExpoSpeechRecognitionModule.stop();
+    setIsRecording(false);
+  };
 
   const startInterview = async () => {
     setScreen('interview');
@@ -72,7 +137,9 @@ export default function HomeScreen() {
       const text = await callClaude([{ role: 'user', content: 'Commence.' }], getSystem());
       const aiMsg = { role: 'assistant', content: text };
       setMessages([aiMsg]);
-      setHistory([{ role: 'user', content: 'Commence.' }, aiMsg]);
+      setHistory([{ role: 'user', content: 'Commence.' }, { role: 'assistant', content: text }]);
+      const cleanText = text.replace(/\{[\s\S]*?\}/g, '').trim();
+      if (cleanText) speak(cleanText);
     } catch (e) {
       setMessages([{ role: 'assistant', content: 'Erreur réseau.' }]);
     }
@@ -83,7 +150,7 @@ export default function HomeScreen() {
     if (!input.trim() || loading) return;
     const userMsg = { role: 'user', content: input };
     const newMsgs = [...messages, userMsg];
-    const newHistory = [...history, userMsg];
+    const newHistory = [...history.map((m: any) => ({ role: m.role, content: m.content })), userMsg];
     setMessages(newMsgs);
     setHistory(newHistory);
     setInput('');
@@ -103,7 +170,12 @@ export default function HomeScreen() {
       }
       const aiMsg = { role: 'assistant', content: text, feedback };
       setMessages([...newMsgs, aiMsg]);
-      setHistory([...newHistory, aiMsg]);
+      setHistory([...newHistory, { role: 'assistant', content: text }]);
+      if (feedback?.conseil) speak(feedback.conseil + '. ' + (feedback.prochaine_question || ''));
+      else {
+        const cleanText = text.replace(/\{[\s\S]*?\}/g, '').trim();
+        if (cleanText) speak(cleanText);
+      }
       if (questionCount >= 4) setTimeout(() => setScreen('results'), 500);
     } catch (e) {
       setMessages(p => [...p, { role: 'assistant', content: 'Erreur.' }]);
@@ -112,18 +184,21 @@ export default function HomeScreen() {
   };
 
   const avg = scores.length ? Math.round(scores.reduce((a,b)=>a+b,0)/scores.length) : 0;
-  const scoreColor = (s: number) => s >= 75 ? '#22c55e' : s >= 50 ? '#f59e0b' : '#ef4444';
-  const scoreLabel = (s: number) => s >= 80 ? 'Excellent' : s >= 65 ? 'Bon' : s >= 50 ? 'Correct' : 'À améliorer';
+  const scoreColor = (sc: number) => sc >= 75 ? '#22c55e' : sc >= 50 ? '#f59e0b' : '#ef4444';
+  const scoreLabel = (sc: number) => sc >= 80 ? 'Excellent' : sc >= 65 ? 'Bon' : sc >= 50 ? 'Correct' : 'À améliorer';
 
   if (screen === 'home') return (
     <SafeAreaView style={s.container}>
       <View style={s.center}>
         <Text style={s.badge}>IA • Gratuit • Sans inscription</Text>
         <Text style={s.title}>Décroche ton{'\n'}<Text style={s.accent}>prochain job</Text></Text>
-        <Text style={s.sub}>Simule un vrai entretien avec un recruteur IA. Reçois un feedback précis sur chaque réponse.</Text>
+        <Text style={s.sub}>Simule un vrai entretien oral avec un recruteur IA. Reçois un feedback précis sur chaque réponse.</Text>
         <TouchableOpacity style={s.btn} onPress={() => setScreen('setup')}>
           <Text style={s.btnText}>Commencer l'entretien →</Text>
         </TouchableOpacity>
+        <TouchableOpacity onPress={testerVoixFR} style={{padding: 10, backgroundColor: 'orange', margin: 10, borderRadius: 8}}>
+          <Text style={{color: '#000', fontWeight: '700'}}>TEST VOIX</Text>
+          </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
@@ -187,8 +262,27 @@ export default function HomeScreen() {
           {loading && <ActivityIndicator color="#6366f1" style={{marginTop:8}} />}
         </ScrollView>
         <View style={s.inputBar}>
-          <TextInput style={s.textInput} value={input} onChangeText={setInput} placeholder="Ta réponse..." placeholderTextColor="#4b5563" multiline />
-          <TouchableOpacity style={[s.sendBtn,(!input.trim()||loading)&&s.sendOff]} onPress={sendAnswer} disabled={!input.trim()||loading}>
+          <TextInput
+            style={s.textInput}
+            value={input}
+            onChangeText={setInput}
+            placeholder={isRecording ? '🎤 Parlez...' : 'Ta réponse...'}
+            placeholderTextColor={isRecording ? '#ef4444' : '#4b5563'}
+            multiline
+            editable={!isRecording}
+          />
+          <TouchableOpacity
+            style={[s.micBtn, isRecording && s.micActive]}
+            onPress={isRecording ? stopRecording : startRecording}
+            disabled={loading}
+          >
+            <Text style={{fontSize:20}}>{isRecording ? '⏹' : '🎤'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.sendBtn, (!input.trim()||loading) && s.sendOff]}
+            onPress={sendAnswer}
+            disabled={!input.trim()||loading}
+          >
             <Text style={s.sendIcon}>↑</Text>
           </TouchableOpacity>
         </View>
@@ -254,6 +348,8 @@ const s = StyleSheet.create({
   sendBtn:{backgroundColor:'#6366f1',borderRadius:12,width:44,justifyContent:'center',alignItems:'center'},
   sendOff:{backgroundColor:'rgba(99,102,241,0.2)'},
   sendIcon:{color:'#fff',fontSize:20,fontWeight:'700'},
+  micBtn:{backgroundColor:'rgba(255,255,255,0.08)',borderRadius:12,width:44,justifyContent:'center',alignItems:'center'},
+  micActive:{backgroundColor:'rgba(239,68,68,0.3)',borderWidth:1,borderColor:'#ef4444'},
   scoreCircle:{alignItems:'center',backgroundColor:'rgba(99,102,241,0.1)',borderWidth:1,borderColor:'rgba(99,102,241,0.2)',borderRadius:20,padding:32,marginVertical:24,width:'100%'},
   bigScore:{fontSize:72,fontWeight:'900',lineHeight:80},
 });
