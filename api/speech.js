@@ -3,7 +3,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { text } = req.body;
+  const { text, voice } = req.body;
 
   if (!text) {
     return res.status(400).json({ error: 'Text is required' });
@@ -18,7 +18,7 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: 'tts-1',
-        voice: 'onyx',
+        voice: voice || 'onyx',
         input: text,
       }),
     });
