@@ -177,7 +177,8 @@ const sendAnswer = async (overrideText?: string) => {
           }
         } catch {}
       }
-      const aiMsg = { role: 'assistant', content: text, feedback };
+      const displayText = text.replace(/\{[\s\S]*\}/, '').trim();
+      const aiMsg = { role: 'assistant', content: displayText, feedback };
       setMessages([...newMsgs, aiMsg]);
       setHistory([...newHistory, { role: 'assistant', content: text }]);
       if (feedback?.conseil) speak(feedback.conseil + '. ' + (feedback.prochaine_question || ''), voiceGender);
