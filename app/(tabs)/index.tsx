@@ -58,7 +58,12 @@ const speak = async (text: string, gender: 'homme' | 'femme' = 'homme') => {
   }
 };
 
-
+type Feedback = {
+  score?: number;
+  conseil?: string;
+  prochaine_question?: string;
+  fin_entretien?: boolean;
+};
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const [screen, setScreen] = useState('home');
@@ -160,13 +165,14 @@ const sendAnswer = async (overrideText?: string) => {
     setLoading(true);
     try {
       const text = await callClaude(newHistory, getSystem());
-      let feedback = null;
+      let feedback: Feedback | null = null;
       const match = text.match(/\{[\s\S]*\}/);
       if (match) {
         try {
           feedback = JSON.parse(match[0]);
-          if (feedback.score !== undefined) {
-            setScores(p => [...p, feedback.score]);
+          if (feedback && feedback.score !== undefined) {
+            const score = feedback.score;
+            setScores(p => [...p, score]);
             setQuestionCount(p => p + 1);
           }
         } catch {}
