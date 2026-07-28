@@ -67,6 +67,8 @@ export default function HomeScreen() {
   const [cv, setCv] = useState('');
   const [jobAd, setJobAd] = useState('');
   const [voiceGender, setVoiceGender] = useState<'homme' | 'femme'>('homme');
+  const [minQuestions, setMinQuestions] = useState(5);
+  const [maxQuestions, setMaxQuestions] = useState(20);
   const [company, setCompany] = useState<string | null>(null);
   const [role, setRole] = useState('');
   const [messages, setMessages] = useState<any[]>([]);
@@ -82,17 +84,35 @@ export default function HomeScreen() {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
   }, [messages, loading]);
 
-  useSpeechRecognitionEvent('result', (event) => {
-    if (event.results[0]) {
-      setInput(event.results[0].transcript);
-    }
-  });
+const finalTranscriptRef = useRef('');
 
-  useSpeechRecognitionEvent('end', () => {
-    setIsRecording(false);
-  });
+useSpeechRecognitionEvent('result', (event) => {
+  if (event.results[0]) {
+    const transcript = event.results[0].transcript;
+    setInput(transcript);
+    finalTranscriptRef.current = transcript;
+  }
+});
 
-  const getSystem = () => `Tu es un recruteur senior chez ${company}, pour un poste de ${role} niveau ${level}, dans le secteur ${sector}.${cv ? `Voici le CV du candidat : ${cv}.` : ''}${jobAd ? `Voici l'annonce du poste : ${jobAd}.` :''} ${cv || jobAd ? 'Base tes questions sur ces informations pour personnaliser l\'entretien, comme un vrai recruteur qui a lu le dossier du candidat.' : ''} Pose UNE question à la fois. Après chaque réponse, réponds UNIQUEMENT en JSON: {"score":0-100,"points_forts":["..."],"points_amelioration":["..."],"conseil":"...","prochaine_question":"..."}. Premier message: présente-toi et pose la première question (sans JSON). Réponds en français. N'utilise JAMAIS de markdown (pas d'astérisques, pas de dièses, pas de backticks, pas de tirets). Écris en texte brut uniquement. Retourne le JSON brut sans formatage.`;
+useSpeechRecognitionEvent('end', () => {
+  setIsRecording(false);
+  const transcript = finalTranscriptRef.current.trim();
+  if (transcript) {
+    sendAnswer(transcript);
+    finalTranscriptRef.current = '';
+  }
+});
+
+  const getSystem = () => `Tu es un recruteur senior chez ${company}, pour un poste de ${role} niveau ${level}, dans le secteur ${sector}. Le recruteur qui mène l'entretien s'appelle d'un prénom lié au genre choisi ${voiceGender === 'femme' ? 'féminin' : 'masculin'}, invente les toi-même.${cv ? `Voici le CV du candidat : ${cv}.` : ''}${jobAd ? `Voici l'annonce du poste : ${jobAd}.` : ''} ${cv || jobAd ? 'Base tes questions sur ces informations pour personnaliser l\'entretien, comme un vrai recruteur qui a lu le dossier du candidat.' : ''}
+
+RÈGLES SUR LE NOMBRE DE QUESTIONS :
+Fourchette autorisée : entre ${minQuestions} et ${maxQuestions} questions.
+Après chaque réponse, évalue si elle est complète. Si elle est vague ou hors-sujet, tu peux relancer avant de passer à la suite. Si le candidat enchaîne des réponses faibles, tu peux clore avant ${maxQuestions}, comme un vrai recruteur qui n'est plus convaincu — indique-le via "fin_entretien":true et explique pourquoi dans "conseil". Si le candidat s'en sort bien, va jusqu'à ${maxQuestions} pour couvrir un entretien complet. Ne dépasse jamais ${maxQuestions}, ne t'arrête jamais avant ${minQuestions} sauf réponses très hors-sujet répétées.
+
+RÈGLE SUR LA RÉMUNÉRATION :
+N'aborde JAMAIS spontanément le salaire, sauf si l'annonce du poste en mentionne un. Dans ce cas, tu peux l'évoquer une seule fois, à un moment naturel (idéalement en fin d'entretien) : "Le poste est annoncé à [montant]. Est-ce en ligne avec vos attentes ?" Si le candidat rebondit, enchaîne sur la négociation. S'il n'y donne pas suite, n'insiste pas et n'y reviens pas.
+
+Pose UNE question à la fois. Après chaque réponse, réponds UNIQUEMENT en JSON: {"score":0-100,"points_forts":["..."],"points_amelioration":["..."],"vocabulaire":"...","conseil":"...","prochaine_question":"...","fin_entretien":false}. Premier message: présente-toi et pose la première question (sans JSON). Réponds en français. N'utilise JAMAIS de markdown (pas d'astérisques, pas de dièses, pas de backticks, pas de tirets). Écris en texte brut uniquement. Retourne le JSON brut sans formatage. Dans "vocabulaire", analyse en une phrase courte le niveau de langage du candidat (mots de remplissage comme "euh"/"du coup", précision du vocabulaire professionnel, répétitions), avec un conseil concret pour l'améliorer.`;
 
   const startRecording = async () => {
     Speech.stop();
@@ -128,9 +148,10 @@ export default function HomeScreen() {
     setLoading(false);
   };
 
-  const sendAnswer = async () => {
-    if (!input.trim() || loading) return;
-    const userMsg = { role: 'user', content: input };
+const sendAnswer = async (overrideText?: string) => {
+  const answerText = overrideText ?? input;
+  if (!answerText.trim() || loading) return;
+  const userMsg = { role: 'user', content: answerText };
     const newMsgs = [...messages, userMsg];
     const newHistory = [...history.map((m: any) => ({ role: m.role, content: m.content })), userMsg];
     setMessages(newMsgs);
@@ -158,7 +179,7 @@ export default function HomeScreen() {
         const cleanText = text.replace(/\{[\s\S]*?\}/g, '').trim();
         if (cleanText) speak(cleanText, voiceGender);
       }
-      if (questionCount >= 4) setTimeout(() => setScreen('results'), 500);
+      if (feedback?.fin_entretien || questionCount >= maxQuestions) setTimeout(() => setScreen('results'), 500);
     } catch (e) {
       setMessages(p => [...p, { role: 'assistant', content: 'Erreur.' }]);
     }
@@ -274,7 +295,7 @@ export default function HomeScreen() {
     <SafeAreaView style={s.container}>
       <View style={s.header}>
         <Text style={s.headerTitle}>{company} · {role}</Text>
-        <Text style={s.headerSub}>{questionCount}/5{scores.length > 0 ? ` · Moy. ${avg}/100` : ''}</Text>
+        <Text style={s.headerSub}>{questionCount}/{maxQuestions}{scores.length > 0 ? ` · Moy. ${avg}/100` : ''}</Text>
       </View>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
@@ -295,6 +316,7 @@ export default function HomeScreen() {
                         </View>
                         {fb.points_forts?.length > 0 && <><Text style={s.fbTitle}>✓ Points forts</Text>{fb.points_forts.map((p: string, idx: number) => <Text key={idx} style={s.fbItem}>• {p}</Text>)}</>}
                         {fb.points_amelioration?.length > 0 && <><Text style={[s.fbTitle, { color: '#f59e0b' }]}>△ À améliorer</Text>{fb.points_amelioration.map((p: string, idx: number) => <Text key={idx} style={s.fbItem}>• {p}</Text>)}</>}
+                        {fb.vocabulaire && <View style={[s.conseilBox, { marginTop: 8 }]}><Text style={s.conseilText}>📝 {fb.vocabulaire}</Text></View>}
                         {fb.conseil && <View style={s.conseilBox}><Text style={s.conseilText}>💡 {fb.conseil}</Text></View>}
                         {fb.prochaine_question && <View style={[s.aiBubble, { marginTop: 8 }]}><Text style={s.aiText}>{fb.prochaine_question}</Text></View>}
                       </View>
@@ -308,31 +330,24 @@ export default function HomeScreen() {
           })}
           {loading && <ActivityIndicator color="#E8552E" style={{ marginTop: 8 }} />}
         </ScrollView>
-        <View style={[s.inputBar, {paddingBottom: insets.bottom + 8}]}>
-          <TextInput
-            style={s.textInput}
-            value={input}
-            onChangeText={setInput}
-            placeholder={isRecording ? '🎤 Parlez...' : 'Ta réponse...'}
-            placeholderTextColor={isRecording ? '#ef4444' : '#8A7A68'}
-            multiline
-            editable={!isRecording}
-          />
-          <TouchableOpacity
-            style={[s.micBtn, isRecording && s.micActive]}
-            onPress={isRecording ? stopRecording : startRecording}
-            disabled={loading}
-          >
-            <Text style={{ fontSize: 20 }}>{isRecording ? '⏹' : '🎤'}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[s.sendBtn, (!input.trim() || loading) && s.sendOff]}
-            onPress={sendAnswer}
-            disabled={!input.trim() || loading}
-          >
-            <Text style={s.sendIcon}>↑</Text>
-          </TouchableOpacity>
-        </View>
+<View style={[s.inputBar, {paddingBottom: insets.bottom + 8}]}>
+  <TextInput
+    style={s.textInput}
+    value={input}
+    editable={false}
+    pointerEvents="none"
+    placeholder={isRecording ? '🎤 Parlez...' : 'Appuie sur le micro...'}
+    placeholderTextColor={isRecording ? '#ef4444' : '#8A7A68'}
+    multiline
+  />
+  <TouchableOpacity
+    style={[s.micBtn, isRecording && s.micActive]}
+    onPress={isRecording ? stopRecording : startRecording}
+    disabled={loading}
+  >
+    <Text style={{ fontSize: 20 }}>{isRecording ? '■' : '🎤'}</Text>
+  </TouchableOpacity>
+</View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
