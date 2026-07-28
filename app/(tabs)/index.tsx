@@ -1,3 +1,4 @@
+import Purchases from 'react-native-purchases';
 import { Audio } from 'expo-av';
 import * as Speech from 'expo-speech';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
@@ -83,11 +84,26 @@ export default function HomeScreen() {
   const [questionCount, setQuestionCount] = useState(0);
   const [history, setHistory] = useState<any[]>([]);
   const [isRecording, setIsRecording] = useState(false);
+  const [credits, setCredits] = useState<number | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
   }, [messages, loading]);
+  const fetchCredits = async () => {
+  try {
+    const userId = await Purchases.getAppUserID();
+    const res = await fetch(`https://interview-coach2-sooty.vercel.app/api/credits?userId=${userId}`);
+    const data = await res.json();
+    setCredits(data.credits ?? 0);
+  } catch (e) {
+    console.log('Erreur fetchCredits:', e);
+  }
+};
+
+useEffect(() => {
+  fetchCredits();
+}, []);
 
 const finalTranscriptRef = useRef('');
 
