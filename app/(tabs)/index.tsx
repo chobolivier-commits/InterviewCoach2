@@ -86,6 +86,7 @@ export default function HomeScreen() {
   const [isRecording, setIsRecording] = useState(false);
   const [credits, setCredits] = useState<number | null>(null);
   const [offerings, setOfferings] = useState<any>(null);
+  const [isPro, setIsPro] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
@@ -112,8 +113,16 @@ const fetchOfferings = async () => {
 useEffect(() => {
   fetchCredits();
   fetchOfferings();
+  checkSubscription();
 }, []);
-
+const checkSubscription = async () => {
+  try {
+    const customerInfo = await Purchases.getCustomerInfo();
+    setIsPro(customerInfo.entitlements.active['Unlimited'] !== undefined);
+  } catch (e) {
+    console.log('Erreur checkSubscription:', e);
+  }
+};
 const finalTranscriptRef = useRef('');
 
 useSpeechRecognitionEvent('result', (event) => {
@@ -159,6 +168,20 @@ Pose UNE question à la fois. Après chaque réponse, réponds UNIQUEMENT en JSO
   };
 
   const startInterview = async () => {
+    if (!isPro) {
+  try {
+    const userId = await Purchases.getAppUserID();
+    await fetch('https://interview-coach2-sooty.vercel.app/api/credits', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, action: 'consume', amount: 1 }),
+    });
+    await fetchCredits();
+  } catch (e) {
+    console.log('Erreur consommation crédit:', e);
+    return;
+  }
+}
     setScreen('interview');
     setLoading(true);
     setMessages([]);
@@ -317,13 +340,13 @@ const sendAnswer = async (overrideText?: string) => {
           <TouchableOpacity
             style={[s.btn, { marginTop: 24 }, (!company || !role || !sector || !level) && { opacity: 0.5 }]}
             onPress={startInterview}
-            disabled={!company || !role || !sector || !level || credits ===0}
+            disabled={!company || !role || !sector || !level || (credits ===0 && !isPro)}
           >
             <Text style={s.btnText}>
-  {credits === 0 ? 'Crédits insuffisants' : "Démarrer l'entretien →"}
+  {credits === 0 && !isPro ? 'Crédits insuffisants' : "Démarrer l'entretien →"}
 </Text>
           </TouchableOpacity>
-          {credits === 0 && (
+          {credits === 0 && !isPro && (
   <TouchableOpacity
     style={[s.btn, { marginTop: 12, backgroundColor: 'rgba(255,255,255,0.08)' }]}
     onPress={() => setScreen('paywall')}
