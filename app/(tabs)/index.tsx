@@ -85,6 +85,7 @@ export default function HomeScreen() {
   const [history, setHistory] = useState<any[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [credits, setCredits] = useState<number | null>(null);
+  const [offerings, setOfferings] = useState<any>(null);
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
@@ -100,9 +101,17 @@ export default function HomeScreen() {
     console.log('Erreur fetchCredits:', e);
   }
 };
-
+const fetchOfferings = async () => {
+  try {
+    const offerings = await Purchases.getOfferings();
+    setOfferings(offerings.current);
+  } catch (e) {
+    console.log('Erreur fetchOfferings:', e);
+  }
+};
 useEffect(() => {
   fetchCredits();
+  fetchOfferings();
 }, []);
 
 const finalTranscriptRef = useRef('');
@@ -302,13 +311,26 @@ const sendAnswer = async (overrideText?: string) => {
   onChangeText={setJobAd}
   multiline
 />
+<Text style={[s.label, { textAlign: 'center', marginTop: 8 }]}>
+  🎟️ {credits !== null ? credits : '...'} crédit{credits !== 1 ? 's' : ''} restant{credits !== 1 ? 's' : ''}
+</Text>
           <TouchableOpacity
             style={[s.btn, { marginTop: 24 }, (!company || !role || !sector || !level) && { opacity: 0.5 }]}
             onPress={startInterview}
-            disabled={!company || !role || !sector || !level}
+            disabled={!company || !role || !sector || !level || credits ===0}
           >
-            <Text style={s.btnText}>Démarrer l'entretien →</Text>
+            <Text style={s.btnText}>
+  {credits === 0 ? 'Crédits insuffisants' : "Démarrer l'entretien →"}
+</Text>
           </TouchableOpacity>
+          {credits === 0 && (
+  <TouchableOpacity
+    style={[s.btn, { marginTop: 12, backgroundColor: 'rgba(255,255,255,0.08)' }]}
+    onPress={() => setScreen('paywall')}
+  >
+    <Text style={s.btnText}>🎟️ Acheter des crédits</Text>
+  </TouchableOpacity>
+)}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -374,6 +396,83 @@ const sendAnswer = async (overrideText?: string) => {
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
+if (screen === 'paywall') return (
+  <SafeAreaView style={s.container}>
+    <View style={{ flex: 1, padding: 24, justifyContent: 'center' }}>
+      <Text style={s.title2}>🎟️ Recharger tes crédits</Text>
+      <Text style={[s.sub, { marginBottom: 24 }]}>
+        Choisis une offre pour continuer tes entretiens
+      </Text>
+
+      <TouchableOpacity
+  style={[s.btn, { marginBottom: 12 }]}
+  onPress={async () => {
+    const pkg = offerings?.availablePackages.find((p: any) => p.identifier === 'custom');
+    if (!pkg) return;
+    try {
+      await Purchases.purchasePackage(pkg);
+      const userId = await Purchases.getAppUserID();
+      await fetch('https://interview-coach2-sooty.vercel.app/api/credits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, action: 'add', amount: 3 }),
+      });
+      await fetchCredits();
+      setScreen('home');
+    } catch (e) {
+      console.log('Erreur achat:', e);
+    }
+  }}
+>
+  <Text style={s.btnText}>Pack Découverte — 3 entretiens (4,99€)</Text>
+</TouchableOpacity>
+
+<TouchableOpacity
+  style={[s.btn, { marginBottom: 12 }]}
+  onPress={async () => {
+    const pkg = offerings?.availablePackages.find((p: any) => p.identifier === 'custom2');
+    if (!pkg) return;
+    try {
+      await Purchases.purchasePackage(pkg);
+      const userId = await Purchases.getAppUserID();
+      await fetch('https://interview-coach2-sooty.vercel.app/api/credits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, action: 'add', amount: 8 }),
+      });
+      await fetchCredits();
+      setScreen('home');
+    } catch (e) {
+      console.log('Erreur achat:', e);
+    }
+  }}
+>
+  <Text style={s.btnText}>Pack Sérénité — 8 entretiens (9,99€)</Text>
+</TouchableOpacity>
+
+<TouchableOpacity
+  style={[s.btn, { marginBottom: 24 }]}
+  onPress={async () => {
+    const pkg = offerings?.availablePackages.find((p: any) => p.identifier === '$rc_monthly');
+    if (!pkg) return;
+    try {
+      await Purchases.purchasePackage(pkg);
+      setScreen('home');
+    } catch (e) {
+      console.log('Erreur achat:', e);
+    }
+  }}
+>
+  <Text style={s.btnText}>Abonnement Pro — Illimité (19,99€/mois)</Text>
+</TouchableOpacity>
+
+
+      <TouchableOpacity onPress={() => setScreen('home')}>
+        <Text style={s.back}>← Retour</Text>
+      </TouchableOpacity>
+    </View>
+  </SafeAreaView>
+);
 
   return (
     <SafeAreaView style={s.container}>
