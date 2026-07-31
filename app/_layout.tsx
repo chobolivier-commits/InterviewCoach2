@@ -15,7 +15,7 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
 
   useEffect(() => {
-    Purchases.configure({ apiKey: 'test_IJQthZrPVwoYxXWfnptSItXrslu' });
+    Purchases.configure({ apiKey: 'goog_EmzMeCeEJtxQxrpAhUXLLdRGQWM' });
   }, []);
 
   return (
