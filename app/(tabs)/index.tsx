@@ -1,10 +1,12 @@
 import Purchases from 'react-native-purchases';
+import PlayIntegrity from 'react-native-google-play-integrity';
 import { Audio } from 'expo-av';
 import * as Speech from 'expo-speech';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Buffer } from 'buffer';
 
 const callClaude = async (messages: any[], system: string) => {
   const res = await fetch('https://interview-coach2-sooty.vercel.app/api/chat', {
@@ -87,6 +89,9 @@ export default function HomeScreen() {
   const [credits, setCredits] = useState<number | null>(null);
   const [offerings, setOfferings] = useState<any>(null);
   const [isPro, setIsPro] = useState(false);
+  const [integrityResult, setIntegrityResult] = useState<string>('');
+  const [isTrialMode, setIsTrialMode] = useState(false);
+const [trialQuestionsUsed, setTrialQuestionsUsed] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
@@ -166,22 +171,80 @@ Pose UNE question à la fois. Après chaque réponse, réponds UNIQUEMENT en JSO
     ExpoSpeechRecognitionModule.stop();
     setIsRecording(false);
   };
-
-  const startInterview = async () => {
-    if (!isPro) {
+const testPlayIntegrity = async () => {
   try {
-    const userId = await Purchases.getAppUserID();
-    await fetch('https://interview-coach2-sooty.vercel.app/api/credits', {
+    const isAvailable = await PlayIntegrity.isPlayIntegrityAvailable();
+    if (!isAvailable) {
+      setIntegrityResult('Non disponible sur cet appareil');
+      return;
+    }
+    await PlayIntegrity.prepareStandardIntegrityTokenProvider('205330469023');
+const rawNonce = 'test-nonce-' + Date.now();
+const nonce = Buffer.from(rawNonce)
+  .toString('base64')
+  .replace(/\+/g, '-')
+  .replace(/\//g, '_')
+  .replace(/=+$/, '');
+const token = await PlayIntegrity.requestIntegrityToken(nonce);
+    setIntegrityResult('✅ Token généré (' + token.length + ' caractères)');
+  } catch (e: any) {
+    setIntegrityResult('❌ Erreur: ' + (e.message || e.code || String(e)));
+  }
+};
+const checkTrialEligibility = async (): Promise<boolean> => {
+  try {
+    const isAvailable = await PlayIntegrity.isPlayIntegrityAvailable();
+    if (!isAvailable) return false;
+
+    await PlayIntegrity.prepareStandardIntegrityTokenProvider('205330469023');
+    const rawNonce = 'trial-' + Date.now();
+    const nonce = Buffer.from(rawNonce)
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+    const integrityToken = await PlayIntegrity.requestIntegrityToken(nonce);
+    const deviceId = await Purchases.getAppUserID();
+
+    const res = await fetch('https://interview-coach2-sooty.vercel.app/api/verify-integrity', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, action: 'consume', amount: 1 }),
+      body: JSON.stringify({ deviceId, integrityToken }),
     });
-    await fetchCredits();
+    const data = await res.json();
+    return data.eligible === true;
   } catch (e) {
-    console.log('Erreur consommation crédit:', e);
-    return;
+    console.log('Erreur checkTrialEligibility:', e);
+    return false;
   }
-}
+};
+
+  const startInterview = async () => {
+  if (!isPro) {
+    if (credits && credits > 0) {
+      try {
+        const userId = await Purchases.getAppUserID();
+        await fetch('https://interview-coach2-sooty.vercel.app/api/credits', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, action: 'consume', amount: 1 }),
+        });
+        await fetchCredits();
+      } catch (e) {
+        console.log('Erreur consommation crédit:', e);
+        return;
+      }
+    } else {
+      const eligible = await checkTrialEligibility();
+      if (!eligible) {
+        setScreen('paywall');
+        return;
+      }
+      setIsTrialMode(true);
+      setTrialQuestionsUsed(0);
+    }
+  }
+
     setScreen('interview');
     setLoading(true);
     setMessages([]);
@@ -234,7 +297,12 @@ const sendAnswer = async (overrideText?: string) => {
         const cleanText = text.replace(/\{[\s\S]*?\}/g, '').trim();
         if (cleanText) speak(cleanText, voiceGender);
       }
-      if (feedback?.fin_entretien || questionCount >= maxQuestions) setTimeout(() => setScreen('results'), 500);
+      if (isTrialMode && trialQuestionsUsed + 1 >= 3) {
+  setTimeout(() => setScreen('paywall'), 500);
+} else if (feedback?.fin_entretien || questionCount >= maxQuestions) {
+  setTimeout(() => setScreen('results'), 500);
+}
+if (isTrialMode) setTrialQuestionsUsed(p => p + 1);
     } catch (e) {
       setMessages(p => [...p, { role: 'assistant', content: 'Erreur.' }]);
     }
@@ -254,6 +322,10 @@ const sendAnswer = async (overrideText?: string) => {
         <TouchableOpacity style={s.btn} onPress={() => setScreen('setup')}>
           <Text style={s.btnText}>Commencer l'entretien →</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={[s.btn, { marginTop: 12, backgroundColor: 'rgba(255,255,255,0.08)' }]} onPress={testPlayIntegrity}>
+          <Text style={s.btnText}>🧪 Tester Play Integrity</Text>
+        </TouchableOpacity>
+        {integrityResult ? <Text style={{ color: '#EDE6DD', marginTop: 12, textAlign: 'center' }}>{integrityResult}</Text> : null}
       </View>
     </SafeAreaView>
   );
@@ -363,7 +435,11 @@ const sendAnswer = async (overrideText?: string) => {
     <SafeAreaView style={s.container}>
       <View style={s.header}>
         <Text style={s.headerTitle}>{company} · {role}</Text>
-        <Text style={s.headerSub}>{questionCount}/{maxQuestions}{scores.length > 0 ? ` · Moy. ${avg}/100` : ''}</Text>
+        <Text style={s.headerSub}>
+  {isTrialMode
+    ? `🎁 Essai gratuit • Question ${trialQuestionsUsed + 1}/3`
+    : `${questionCount}/${maxQuestions}${scores.length > 0 ? ` · Moy. ${avg}/100` : ''}`}
+</Text>
       </View>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
