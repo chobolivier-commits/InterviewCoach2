@@ -92,6 +92,7 @@ export default function HomeScreen() {
   const [integrityResult, setIntegrityResult] = useState<string>('');
   const [isTrialMode, setIsTrialMode] = useState(false);
 const [trialQuestionsUsed, setTrialQuestionsUsed] = useState(0);
+const [checkingEligibility, setCheckingEligibility] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
@@ -220,6 +221,7 @@ const checkTrialEligibility = async (): Promise<boolean> => {
 };
 
   const startInterview = async () => {
+    if (checkingEligibility) return;
   if (!isPro) {
     if (credits && credits > 0) {
       try {
@@ -235,7 +237,9 @@ const checkTrialEligibility = async (): Promise<boolean> => {
         return;
       }
     } else {
+      setCheckingEligibility(true);
       const eligible = await checkTrialEligibility();
+      setCheckingEligibility(false);
       if (!eligible) {
         setScreen('paywall');
         return;
@@ -412,10 +416,10 @@ if (isTrialMode) setTrialQuestionsUsed(p => p + 1);
           <TouchableOpacity
             style={[s.btn, { marginTop: 24 }, (!company || !role || !sector || !level) && { opacity: 0.5 }]}
             onPress={startInterview}
-            disabled={!company || !role || !sector || !level || (credits ===0 && !isPro)}
+            disabled={!company || !role || !sector || !level || (credits ===0 && !isPro) || checkingEligibility}
           >
             <Text style={s.btnText}>
-  {credits === 0 && !isPro ? 'Crédits insuffisants' : "Démarrer l'entretien →"}
+  {checkingEligibility ? 'Vérification...' : credits === 0 && !isPro ? 'Crédits insuffisants' : "Démarrer l'entretien →"}
 </Text>
           </TouchableOpacity>
           {credits === 0 && !isPro && (
