@@ -76,20 +76,8 @@ export default async function handler(req, res) {
       });
     }
 
-    // 2. Vérifier le quota IP (max 1 nouvel essai / 7 jours)
-    const ipKey = `trial:ip:${clientIp}`;
-    const ipRecentTrial = await redis.get(ipKey);
-
-    if (ipRecentTrial) {
-      return res.status(200).json({
-        eligible: false,
-        reason: 'ip_quota_exceeded',
-      });
-    }
-
-    // 3. Éligible ; on marque device (permanent) + IP (TTL 7 jours)
+    // 2. Éligible ; on marque le device (permanent)
     await redis.set(deviceKey, true); // pas de TTL = permanent
-    await redis.set(ipKey, true, { ex: 7 * 24 * 60 * 60 }); // 7 jours en secondes
 
     return res.status(200).json({
       eligible: true,

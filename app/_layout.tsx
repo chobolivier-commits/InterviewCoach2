@@ -7,16 +7,14 @@ import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
+Purchases.configure({ apiKey: 'goog_EmzMeCeEJtxQxrpAhUXLLdRGQWM' });
+
 export const unstable_settings = {
   anchor: '(tabs)',
 };
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
-
-  useEffect(() => {
-    Purchases.configure({ apiKey: 'goog_EmzMeCeEJtxQxrpAhUXLLdRGQWM' });
-  }, []);
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>

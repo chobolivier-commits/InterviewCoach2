@@ -4,7 +4,7 @@ import { Audio } from 'expo-av';
 import * as Speech from 'expo-speech';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Buffer } from 'buffer';
 
@@ -111,6 +111,9 @@ const [checkingEligibility, setCheckingEligibility] = useState(false);
 const fetchOfferings = async () => {
   try {
     const offerings = await Purchases.getOfferings();
+    console.log('OFFERINGS RAW:', JSON.stringify(offerings, null, 2));
+    console.log('CURRENT OFFERING:', offerings.current);
+    console.log('PACKAGES:', offerings.current?.availablePackages?.map((p: any) => p.identifier));
     setOfferings(offerings.current);
   } catch (e) {
     console.log('Erreur fetchOfferings:', e);
@@ -325,11 +328,9 @@ if (isTrialMode) setTrialQuestionsUsed(p => p + 1);
         <Text style={s.sub}>Simule un vrai entretien oral avec un recruteur IA. Reçois un feedback précis sur chaque réponse.</Text>
         <TouchableOpacity style={s.btn} onPress={() => setScreen('setup')}>
           <Text style={s.btnText}>Commencer l'entretien →</Text>
+
         </TouchableOpacity>
-        <TouchableOpacity style={[s.btn, { marginTop: 12, backgroundColor: 'rgba(255,255,255,0.08)' }]} onPress={testPlayIntegrity}>
-          <Text style={s.btnText}>🧪 Tester Play Integrity</Text>
-        </TouchableOpacity>
-        {integrityResult ? <Text style={{ color: '#EDE6DD', marginTop: 12, textAlign: 'center' }}>{integrityResult}</Text> : null}
+        
       </View>
     </SafeAreaView>
   );
@@ -416,10 +417,10 @@ if (isTrialMode) setTrialQuestionsUsed(p => p + 1);
           <TouchableOpacity
             style={[s.btn, { marginTop: 24 }, (!company || !role || !sector || !level) && { opacity: 0.5 }]}
             onPress={startInterview}
-            disabled={!company || !role || !sector || !level || (credits ===0 && !isPro) || checkingEligibility}
+            disabled={!company || !role || !sector || !level || checkingEligibility}
           >
             <Text style={s.btnText}>
-  {checkingEligibility ? 'Vérification...' : credits === 0 && !isPro ? 'Crédits insuffisants' : "Démarrer l'entretien →"}
+  {checkingEligibility ? 'Vérification...' : "Démarrer l'entretien →"}
 </Text>
           </TouchableOpacity>
           {credits === 0 && !isPro && (
@@ -478,7 +479,26 @@ if (isTrialMode) setTrialQuestionsUsed(p => p + 1);
           })}
           {loading && <ActivityIndicator color="#E8552E" style={{ marginTop: 8 }} />}
         </ScrollView>
-<View style={[s.inputBar, {paddingBottom: insets.bottom + 8}]}>
+        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12, paddingHorizontal: 12, paddingTop: 4 }}>
+  <TouchableOpacity onPress={startInterview}>
+    <Text style={{ fontSize: 20 }}>🔄</Text>
+  </TouchableOpacity>
+  <TouchableOpacity
+    onPress={() =>
+      Alert.alert(
+        "Terminer l'entretien ?",
+        "Tu vas voir ton résultat final. Tu ne pourras plus continuer cet entretien.",
+        [
+          { text: 'Annuler', style: 'cancel' },
+          { text: 'Terminer', style: 'destructive', onPress: () => setScreen('results') },
+        ]
+      )
+    }
+  >
+    <Text style={{ fontSize: 20 }}>🏁</Text>
+  </TouchableOpacity>
+</View>
+<View style={[, {paddingBottom: insets.bottom + 8}]}>
   <TextInput
     style={s.textInput}
     value={input}
