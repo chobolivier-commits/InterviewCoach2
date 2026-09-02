@@ -479,35 +479,7 @@ if (isTrialMode) setTrialQuestionsUsed(p => p + 1);
           })}
           {loading && <ActivityIndicator color="#E8552E" style={{ marginTop: 8 }} />}
         </ScrollView>
-        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12, paddingHorizontal: 12, paddingTop: 4 }}>
-  <TouchableOpacity onPress={startInterview}>
-    <Text style={{ fontSize: 20 }}>🔄</Text>
-  </TouchableOpacity>
-  <TouchableOpacity
-    onPress={() =>
-      Alert.alert(
-        "Terminer l'entretien ?",
-        "Tu vas voir ton résultat final. Tu ne pourras plus continuer cet entretien.",
-        [
-          { text: 'Annuler', style: 'cancel' },
-          { text: 'Terminer', style: 'destructive', onPress: () => setScreen('results') },
-        ]
-      )
-    }
-  >
-    <Text style={{ fontSize: 20 }}>🏁</Text>
-  </TouchableOpacity>
-</View>
-<View style={[, {paddingBottom: insets.bottom + 8}]}>
-  <TextInput
-    style={s.textInput}
-    value={input}
-    editable={false}
-    pointerEvents="none"
-    placeholder={isRecording ? '🎤 Parlez...' : 'Appuie sur le micro...'}
-    placeholderTextColor={isRecording ? '#ef4444' : '#8A7A68'}
-    multiline
-  />
+<View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 12, paddingTop: 8, paddingBottom: insets.bottom + 8 }}>
   <TouchableOpacity
     style={[s.micBtn, isRecording && s.micActive]}
     onPress={isRecording ? stopRecording : startRecording}
@@ -515,6 +487,26 @@ if (isTrialMode) setTrialQuestionsUsed(p => p + 1);
   >
     <Text style={{ fontSize: 20 }}>{isRecording ? '■' : '🎤'}</Text>
   </TouchableOpacity>
+
+  <View style={{ flexDirection: 'row', gap: 12 }}>
+    <TouchableOpacity onPress={startInterview}>
+      <Text style={{ fontSize: 20 }}>🔄</Text>
+    </TouchableOpacity>
+    <TouchableOpacity
+      onPress={() =>
+        Alert.alert(
+          "Terminer l'entretien ?",
+          "Tu vas voir ton résultat final. Tu ne pourras plus continuer cet entretien.",
+          [
+            { text: 'Annuler', style: 'cancel' },
+            { text: 'Terminer', style: 'destructive', onPress: () => setScreen('results') },
+          ]
+        )
+      }
+    >
+      <Text style={{ fontSize: 20 }}>🏁</Text>
+    </TouchableOpacity>
+  </View>
 </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
